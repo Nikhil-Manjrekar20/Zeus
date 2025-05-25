@@ -3,11 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { venuesData } from '../data/artistsData';
 import { supabase } from '../lib/supabase';
 import {
-  CreditCard,
   Building,
-  Users,
-  Calendar,
-  Clock,
   Info,
 } from 'lucide-react';
 
@@ -50,24 +46,34 @@ const PaymentPage = () => {
 
   const fetchAvailableSlots = async () => {
     try {
-      const { data, error } = await supabase
-        .rpc('get_available_slots', {
-          p_venue_id: venue?.id,
-          p_date: selectedDate
-        });
+      const { data, error } = await supabase.rpc('get_available_slots', {
+        p_venue_id: venue?.id,
+        p_date: selectedDate
+      });
 
       if (error) throw error;
       
-      setSlots(data || []);
-      if (data && data.length > 0) {
-        setFormData(prev => ({ ...prev, slotId: data[0].slot_id }));
+      const availableSlots = data || [];
+      setSlots(availableSlots);
+      
+      if (availableSlots.length > 0) {
+        setFormData(prev => ({ ...prev, slotId: availableSlots[0].slot_id }));
+      } else {
+        setFormData(prev => ({ ...prev, slotId: '' }));
       }
     } catch (err: any) {
       setError(err.message);
+      console.error('Error fetching slots:', err);
     }
   };
 
-  if (!venue) return <div>Venue not found</div>;
+  if (!venue) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-xl">Venue not found</div>
+      </div>
+    );
+  }
 
   const basePrice = parseInt(venue.price.replace(/[^\d]/g, ''));
   const decorationFee = formData.decoration ? parseInt(venue.decorationFee.replace(/[^\d]/g, '')) : 0;
@@ -81,12 +87,11 @@ const PaymentPage = () => {
 
     try {
       // Check if slot is still available
-      const { data: isAvailable, error: checkError } = await supabase
-        .rpc('is_slot_available', {
-          p_venue_id: venue.id,
-          p_slot_id: formData.slotId,
-          p_booking_date: selectedDate
-        });
+      const { data: isAvailable, error: checkError } = await supabase.rpc('is_slot_available', {
+        p_venue_id: venue.id,
+        p_slot_id: formData.slotId,
+        p_booking_date: selectedDate
+      });
 
       if (checkError) throw checkError;
       if (!isAvailable) throw new Error('This slot has just been booked. Please select another slot.');
@@ -145,6 +150,7 @@ const PaymentPage = () => {
       razorpay.open();
     } catch (err: any) {
       setError(err.message);
+      console.error('Error creating booking:', err);
     } finally {
       setLoading(false);
     }
@@ -305,9 +311,9 @@ const PaymentPage = () => {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !formData.slotId}
                   className={`w-full bg-pink-600 hover:bg-pink-700 text-white py-3 rounded-lg transition-colors duration-300 font-bold mt-6 ${
-                    loading ? 'opacity-50 cursor-not-allowed' : ''
+                    (loading || !formData.slotId) ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
                   {loading ? 'Processing...' : 'PROCEED'}
