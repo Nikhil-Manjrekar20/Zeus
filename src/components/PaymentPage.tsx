@@ -39,33 +39,39 @@ const PaymentPage = () => {
   });
 
   useEffect(() => {
-    if (selectedDate && venue?.id) {
-      fetchAvailableSlots();
-    }
-  }, [selectedDate, venue?.id]);
-
-  const fetchAvailableSlots = async () => {
-    try {
-      const { data, error } = await supabase.rpc('get_available_slots', {
-        p_venue_id: venue?.id,
-        p_date: selectedDate
-      });
-
-      if (error) throw error;
+    const fetchSlots = async () => {
+      if (!selectedDate || !venue?.id) return;
       
-      const availableSlots = data || [];
-      setSlots(availableSlots);
-      
-      if (availableSlots.length > 0) {
-        setFormData(prev => ({ ...prev, slotId: availableSlots[0].slot_id }));
-      } else {
-        setFormData(prev => ({ ...prev, slotId: '' }));
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const { data, error: slotError } = await supabase.rpc('get_available_slots', {
+          p_venue_id: venue.id,
+          p_date: selectedDate
+        });
+
+        if (slotError) throw slotError;
+
+        const availableSlots = data || [];
+        console.log('Available slots:', availableSlots);
+        
+        setSlots(availableSlots);
+        if (availableSlots.length > 0) {
+          setFormData(prev => ({ ...prev, slotId: availableSlots[0].slot_id }));
+        } else {
+          setFormData(prev => ({ ...prev, slotId: '' }));
+        }
+      } catch (err: any) {
+        console.error('Error fetching slots:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message);
-      console.error('Error fetching slots:', err);
-    }
-  };
+    };
+
+    fetchSlots();
+  }, [selectedDate, venue?.id]);
 
   if (!venue) {
     return (
@@ -86,6 +92,13 @@ const PaymentPage = () => {
     setError(null);
 
     try {
+      console.log('Submitting booking with data:', {
+        venue_id: venue.id,
+        slot_id: formData.slotId,
+        booking_date: selectedDate,
+        ...formData
+      });
+
       // Check if slot is still available
       const { data: isAvailable, error: checkError } = await supabase.rpc('is_slot_available', {
         p_venue_id: venue.id,
@@ -115,6 +128,8 @@ const PaymentPage = () => {
 
       if (bookingError) throw bookingError;
 
+      console.log('Booking created:', booking);
+
       // Initialize Razorpay
       const options = {
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
@@ -125,6 +140,8 @@ const PaymentPage = () => {
         image: '/BINGEN.png',
         order_id: booking.id,
         handler: async (response: any) => {
+          console.log('Payment successful:', response);
+          
           const { error: updateError } = await supabase
             .from('bookings')
             .update({
@@ -149,8 +166,8 @@ const PaymentPage = () => {
       const razorpay = new window.Razorpay(options);
       razorpay.open();
     } catch (err: any) {
+      console.error('Error in booking process:', err);
       setError(err.message);
-      console.error('Error creating booking:', err);
     } finally {
       setLoading(false);
     }
